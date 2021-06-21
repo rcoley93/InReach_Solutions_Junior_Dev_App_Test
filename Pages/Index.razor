@@ -1,0 +1,100 @@
+@page "/"
+@using InReach_Solutions_Junior_Dev_App_Test.Shared
+@inject InReach_Solutions_Junior_Dev_App_Test.Services.IMailService EmailService
+@inject InReach_Solutions_Junior_Dev_App_Test.Services.IAWSService AWSFileUploadService
+    <div class="container">
+        <div class="text-center mt-5">
+            <h1>Uploadr</h1>
+        </div>
+        <div class="text-center p-3">
+            <p>Please select a file to upload and enter your email. An email will be sent to you with a link to your file.</p>
+        </div>
+
+
+        <p>@strMessage</p>
+        <div class="container p-5">
+            <div class="row">
+                <div class="col"></div>
+                <div class="col">
+                    <EditForm Model="@DN" OnValidSubmit="@HandleValidSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <InputText id="email" @bind-Value="DN.strEmail" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="file" class="form-label">Please Select a File to Upload</label>
+                            <InputFile id="file" OnChange="@OnInputFileChange" class="form-control" />
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Upload</button>
+                        </div>
+
+                    </EditForm>
+                </div>
+                <div class="col"></div>
+            </div>
+        </div>
+    </div>
+<div class="fixed-bottom">
+    <p>
+        Project source code located at <a href="https://github.com/rcoley93/InReach_Solutions_Junior_Dev_App_Test">https://github.com/rcoley93/InReach_Solutions_Junior_Dev_App_Test</a>.<br />
+
+    </p>
+</div>
+
+    @code {
+        private FileToUpload DN = new();
+        private UploadResult lResult = new();
+        private string strMessage = "";
+
+
+        private async void HandleValidSubmit()
+        {
+            //upload file
+            UploadResult urUploadFile = await AWSFileUploadService.UploadFile(DN.ibfUpload.OpenReadStream(), DN.ibfUpload.Name);
+
+            //check for errors
+            if (!urUploadFile.blnStatus)
+            {
+                updateMessage($"There was an error uploading the file. Please try again later. {urUploadFile.strMessage}");
+                return;
+            }
+            else
+            {
+                updateMessage("File uploaded to AWS. Generating the link now!");
+            }
+
+            //generate presigned url
+            UploadResult urPresignedResult = AWSFileUploadService.GeneratePresignedUrl(urUploadFile.strMessage);
+
+            //check for errors
+            if (!urPresignedResult.blnStatus)
+            {
+                updateMessage($"There was an error creating the link! Please try again later. {urPresignedResult.strMessage}");
+                return;
+            }
+            else
+            {
+                updateMessage("The link has been generated and will now be sent to the email provided.");
+            }
+
+            //send email
+            await EmailService.SendEmail(DN.strEmail, "Uploadr Link", $"<h1>Uploadr</h1><p>Thank you for uploading your file! Here is the link!</p><a href=\"{urPresignedResult.strMessage}\" >{urPresignedResult.strMessage}</ a >");
+            updateMessage("The email with the link has been sent. Thank you for using our service.");
+        }
+        private void OnInputFileChange(InputFileChangeEventArgs e)
+        {
+            DN.ibfUpload = e.File;
+        }
+
+        private void updateMessage(string Message)
+        {
+            strMessage = Message;
+            this.StateHasChanged();
+        }
+    }
